@@ -1,170 +1,164 @@
+use anyhow::bail;
+use log::{error, info};
+use serde::{Deserialize, Serialize};
+use cex_core::{CPTKline, EXCHID_BINANCE, Sender, write_fixed};
 
+use futures_util::{SinkExt, StreamExt};
+use serde_json::json;
+use tokio::net::TcpStream;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::protocol::Message};
 
-
-
-pub async fn connect_multiple_kline_streams(
-    config: KlineConfig,
-    proxy: Option<ProxyConfig>,
-    writer_type: WriterType,
-) -> Result<()> {
-    let mut handles = Vec::new();
-    
-    for interval in config.intervals {
-        let symbol = config.symbol.clone();
-        let proxy = proxy.clone();
-        let writer_type = writer_type.clone();
-        
-        let handle = tokio::spawn(async move {
-            let ws_url = format!(
-                "wss://stream.binance.com:9443/ws/{}@kline_{}",
-                symbol.to_lowercase(),
-                interval.as_str()
-            );
-            
-            info!("Connecting to Binance WebSocket: {}", ws_url);
-            
-            if let Some(proxy_config) = proxy {
-                info!("Using proxy: {}:{}", proxy_config.host, proxy_config.port);
-                
-                // 测试代理连接
-                let output = Command::new("curl")
-                    .args(&[
-                        "-x",
-                        &format!("socks5h://{}:{}", proxy_config.host, proxy_config.port),
-                        "https://api.binance.com/api/v3/time",
-                        "-v"
-                    ])
-                    .output()
-                    .context("Failed to execute curl command")?;
-                    
-                if !output.status.success() {
-                    let error = String::from_utf8_lossy(&output.stderr);
-                    return Err(anyhow::anyhow!("Proxy test failed: {}", error));
-                }
-                
-                info!("Proxy test successful");
-                
-                // 设置系统代理
-                unsafe {
-                    std::env::set_var("ALL_PROXY", format!("socks5h://{}:{}", proxy_config.host, proxy_config.port));
-                    std::env::set_var("HTTPS_PROXY", format!("socks5h://{}:{}", proxy_config.host, proxy_config.port));
-                }
-                
-                let (stream, response) = connect_async(&ws_url).await.context("Failed to connect through proxy")?;
-                info!("WebSocket connected successfully through proxy: {:?}", response);
-                handle_websocket_stream(stream, symbol, writer_type).await?;
-            } else {
-                let (stream, _) = connect_async(&ws_url).await.context("Failed to connect directly")?;
-                info!("WebSocket connected successfully");
-                handle_websocket_stream(stream, symbol, writer_type).await?;
-            }
-            
-            Ok::<(), anyhow::Error>(())
-        });
-        
-        handles.push(handle);
-    }
-    
-    // 等待所有任务完成
-    for handle in handles {
-        handle.await.context("Failed to join task")??;
-    }
-    
-    Ok(())
-}
-
-#[derive(Debug, Clone)]
-pub struct KlineConfig {
-    pub symbol: String,
-    pub intervals: Vec<KlineInterval>,
-}
-
-impl KlineConfig {
-    pub fn new(symbol: impl Into<String>, intervals: Vec<KlineInterval>) -> Self {
-        Self {
-            symbol: symbol.into(),
-            intervals,
+/*
+{
+    "stream": "btcusdt@kline_1m",
+    "data": {
+        "e": "kline",
+        "E": 1748877604023,
+        "s": "BTCUSDT",
+        "k": {
+            "t": 1748877600000,
+            "T": 1748877659999,
+            "s": "BTCUSDT",
+            "i": "1m",
+            "f": 4978109970,
+            "L": 4978110557,
+            "o": "104349.06000000",
+            "c": "104380.96000000",
+            "h": "104380.96000000",
+            "l": "104349.06000000",
+            "v": "10.32405000",
+            "n": 588,
+            "x": false,
+            "q": "1077392.54360710",
+            "V": "10.27943000",
+            "Q": "1072735.25781810",
+            "B": "0"
         }
     }
 }
-
-pub async fn connect_kline_stream_with_timeout(
-    symbol: &str,
-    interval: KlineInterval,
-    proxy: Option<ProxyConfig>,
-    writer_type: WriterType,
-    duration: Duration,
-) -> Result<()> {
-    let config = KlineConfig::new(
-        symbol.to_string(),
-        vec![interval]
-    );
-    
-    timeout(
-        duration,
-        connect_multiple_kline_streams(config, proxy, writer_type)
-    ).await.context("Connection timed out")?
+*/
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct BNKStreamFrame {
+    stream: String,
+    data: BNKlineData,
 }
 
-pub async fn connect_kline_stream(symbol: &str, interval: KlineInterval, writer_type: WriterType) -> Result<()> {
-    connect_kline_stream_with_proxy(symbol, interval, None, writer_type).await
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct BNKlineData {
+    #[serde(rename = "e")]
+    event_type: String,
+    #[serde(rename = "E")]
+    event_time: i64,
+    #[serde(rename = "s")]
+    symbol: String,
+    #[serde(rename = "k")]
+    kline: BNKline,
 }
 
-pub async fn connect_kline_stream_with_proxy(
-    symbol: &str,
-    interval: KlineInterval,
-    proxy: Option<ProxyConfig>,
-    writer_type: WriterType,
-) -> Result<()> {
-    let config = KlineConfig::new(
-        symbol.to_string(),
-        vec![interval]
-    );
-    connect_multiple_kline_streams(config, proxy, writer_type).await
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct BNKline {
+    #[serde(rename = "t")]
+    start_time: i64,
+    #[serde(rename = "T")]
+    end_time: i64,
+    #[serde(rename = "s")]
+    symbol: String,
+    #[serde(rename = "i")]
+    interval: String,
+    #[serde(rename = "o")]
+    open: String,
+    #[serde(rename = "c")]
+    close: String,
+    #[serde(rename = "h")]
+    high: String,
+    #[serde(rename = "l")]
+    low: String,
+    #[serde(rename = "v")]
+    volume: String,
+    #[serde(rename = "n")]
+    number_of_trades: i32,
+    #[serde(rename = "x")]
+    is_closed: bool,
 }
 
-
-
-struct KlineHandler {
-    _symbol: String,
-    writer: Writer,
-    current_kline_start_time: Option<i64>,
-    cached_kline: Option<SimpleKLine>,
+pub struct BNClient {
+    pub ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    pub tx: Sender<CPTKline>,
 }
 
-impl KlineHandler {
-    fn new(symbol: String, writer_type: WriterType) -> Result<Self> {
-        let writer = cex_core::writer::create_writer(writer_type)?;
-        Ok(Self {
-            _symbol: symbol,
-            writer,
-            current_kline_start_time: None,
-            cached_kline: None,
+impl BNClient {
+
+    pub async fn connect(tx: Sender<CPTKline>) -> anyhow::Result<Self> {
+        let url = format!("wss://stream.binance.com:9443/stream");
+        let (ws_stream, _) = connect_async(url).await?;
+        info!("Connected to Binance");
+
+        Ok(BNClient {
+            ws_stream,
+            tx,
         })
     }
 
-    async fn handle_kline(&mut self, kline_data: &BNKlineData) -> Result<()> {
-        let simple_kline = SimpleKLine::from(kline_data.clone());
+    pub async fn subscribe_kline(&mut self, codes: Vec<String>) -> anyhow::Result<()> {
+        let subs = json!({
+            "method": "SUBSCRIBE",
+            "params": codes.iter().map(|code| format!("{}@kline_1s", code)).collect::<Vec<String>>(),
+            "id": 1
+        });
+        self.ws_stream.send(Message::Text(subs.to_string())).await?;
+        info!("Subscribed to Binance");
+        Ok(())
+    }
 
-        // 检查是否是新的一分钟
-        if let Some(current_start_time) = self.current_kline_start_time {
-            if current_start_time != kline_data.kline.start_time {
-                // 如果是新的一分钟，写入之前缓存的数据（如果有的话）
-                if let Some(cached_data) = self.cached_kline.take() {
-                    self.writer.write(&cached_data).await?;
-                    self.writer.flush().await?;
-                }
+    pub async fn on_recv(&mut self) -> anyhow::Result<()>
+    {
+        while let Some(message) = self.ws_stream.next().await {
+            match message {
+                Ok(Message::Text(text)) => match serde_json::from_str::<BNKStreamFrame>(&text) {
+                    Ok(frame) => {
+                        let kline_data = frame.data;
+                        if !kline_data.kline.is_closed {
+                            continue;
+                        }
+                        let k = kline_data.kline;
+                        let now_ts_ns = chrono::Local::now().timestamp_nanos_opt().unwrap_or(0);
+
+                        let mut kline = CPTKline {
+                            exchange: EXCHID_BINANCE,
+                            code: [0; 16],
+                            open_time_ms: k.start_time as u64,
+                            interval: 1,
+                            local_ts_ns: now_ts_ns as u64,
+                            open: k.open.parse().unwrap_or(0.0),
+                            close: k.close.parse().unwrap_or(0.0),
+                            high: k.high.parse().unwrap_or(0.0),
+                            low: k.low.parse().unwrap_or(0.0),
+                        };
+                        write_fixed(&mut kline.code, &k.symbol);
+                        if let Err(err) = self.tx.try_send(&kline) {
+                            bail!("共享内存写入失败: {err:?}");
+                        }
+                    },
+                    Err(e) => {
+                        if text.contains("\"result\":null") {
+                            // 订阅成功的响应，不做处理
+                            continue;
+                        }
+                        error!("Failed to parse message: {}, error: {}", text, e);
+                    }
+                },
+                Ok(Message::Ping(ping)) => {
+                    // info!("Received Ping from Binance");
+                    self.ws_stream.send(Message::Pong(ping)).await?;
+                },
+                Err(e) => {
+                    error!("WebSocket error: {}", e);
+                },
+                _ => {}
             }
-        }
 
-        // 更新当前处理的K线开始时间和缓存数据
-        self.current_kline_start_time = Some(kline_data.kline.start_time);
-        self.cached_kline = Some(simple_kline);
+        }
 
         Ok(())
     }
 }
-
-// 确保KlineHandler是Send
-unsafe impl Send for KlineHandler {}
-

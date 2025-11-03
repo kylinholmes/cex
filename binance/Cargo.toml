@@ -3,6 +3,14 @@ name = "binance"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "demo_writer"
+path = "src/demo_writer.rs"
+
+[[bin]]
+name = "demo_reader"
+path = "src/demo_reader.rs"
+
 [dependencies]
 cex-core = { path = "../cex-core" }
 futures-util = "0.3.28"
@@ -25,4 +33,5 @@ async-trait = "0.1"
 crossbeam = "0.8.4"
 toml = "0.8.22"
 ta = "0.5.0"
-strategies = { version = "0.1.0", path = "../strategies" }
+log = "0.4.28"
+thiserror = "2.0.17"
