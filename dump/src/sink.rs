@@ -69,29 +69,23 @@ impl JsonSink {
 }
 
 pub struct CsvSink {
-    writer: Box<dyn Write + Send>,
-    header_written: bool,
+    writer: csv::Writer<Box<dyn Write + Send>>,
 }
 
 impl CsvSink {
     pub fn new(target: OutputTarget) -> Result<Self> {
-        let (writer, header_written) = target.into_writer_with_header_flag()?;
-        Ok(Self {
-            writer,
-            header_written,
-        })
+        let (boxed_writer, header_written) = target.into_writer_with_header_flag()?;
+        let mut csv_writer = csv::Writer::from_writer(boxed_writer);
+        // write header only if the target was empty
+        if !header_written {
+            csv_writer.write_record(&["code","open","close","high","low", "open_time_ms", "local_ts_ms", "interval", "exchange_name"])?;
+        }
+        Ok(Self { writer: csv_writer })
     }
 
     pub fn write(&mut self, kline: &CPTKline) -> Result<()> {
-        if !self.header_written {
-            self.writer.write_all(
-                b"exchange,exchange_id,code,open_time_ms,interval,local_ts_ns,open,close,high,low\n",
-            )?;
-            self.header_written = true;
-        }
-
         let row: KlineRecord = kline.into();
-        csv::Writer::from_writer(&mut self.writer).serialize(row)?;
+        self.writer.serialize(row)?;
         self.writer.flush()?;
         Ok(())
     }

@@ -84,16 +84,11 @@ impl ChannelConfig {
 }
 
 /// Receiver 附着时如何确定读取起点。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReaderStart {
+    #[default]
     FromBeginning,
     FromLatest,
-}
-
-impl Default for ReaderStart {
-    fn default() -> Self {
-        ReaderStart::FromBeginning
-    }
 }
 
 /// 描述共享内存 ring 当前的状态指标。
@@ -709,10 +704,10 @@ impl<T: Copy + Send> Receiver<T> {
 
     /// 显式推进读指针；只有第一个成功调用的读取者会将元素标记为消费完成。
     pub fn pop(&self) -> Result<(), ChannelError> {
-        if !self
+        if self
             .has_pending
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
+            .is_err()
         {
             return Err(ChannelError::NoPending);
         }
