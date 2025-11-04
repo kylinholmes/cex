@@ -4,7 +4,8 @@ mod v1;
 pub use v1::*;
 pub use shm_chan::*;
 
-pub const CHANNEL_CAP: usize = 1024;
+/// Channel capacity: 1 day of per-second data
+pub const CHANNEL_CAP: usize = 100 * 3600 * 24;
 pub const CH_KLINE_V1: &str = "CTPKlineV1";
 pub const CH_TRADE_V1: &str = "CTPTradeV1";
 pub const CH_ORDER_V1: &str = "CTPOrderV1";

@@ -74,13 +74,9 @@ pub struct CsvSink {
 
 impl CsvSink {
     pub fn new(target: OutputTarget) -> Result<Self> {
-        let (boxed_writer, header_written) = target.into_writer_with_header_flag()?;
-        let mut csv_writer = csv::Writer::from_writer(boxed_writer);
-        // write header only if the target was empty
-        if !header_written {
-            csv_writer.write_record(&["code","open","close","high","low", "open_time_ms", "local_ts_ms", "interval", "exchange_name"])?;
-        }
-        Ok(Self { writer: csv_writer })
+        let (boxed_writer, _) = target.into_writer_with_header_flag()?;
+        let writer = csv::Writer::from_writer(boxed_writer);
+        Ok(Self { writer })
     }
 
     pub fn write(&mut self, kline: &CPTKline) -> Result<()> {

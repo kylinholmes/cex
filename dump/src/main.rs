@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Result, Context};
 use cex_core::*;
 use clap::Parser;
-use log::error;
+use log::{error, info};
 
 use tracing_subscriber;
 use dump_cli::arg::{DataType, Format};
@@ -69,9 +69,13 @@ fn main() -> Result<()> {
         Receiver::<CPTKline>::open_with_mode(CH_KLINE_V1, ReaderStart::FromBeginning)
             .context("attach dump reader to shared channel")?;
 
+    const MAX_MISS_CNT: usize = 1000;
+    let mut miss_cnt = 0;
+
     loop {
         match receiver.next() {
             Ok(kline) => {
+                miss_cnt = 0;
                 if let Err(err) = sink.write_kline(&kline) {
                     error!("Write output failed: {err:?}");
                     break;
@@ -79,6 +83,11 @@ fn main() -> Result<()> {
             }
             Err(ChannelError::Empty) => {
                 sleep(Duration::from_millis(10));
+                miss_cnt += 1;
+                if miss_cnt >= MAX_MISS_CNT {
+                    info!("No new data for a while, exiting...");
+                    break;
+                }
             }
             Err(err) => {
                 error!("Shared memory read error: {err:?}");
