@@ -1,2 +1,2 @@
 pub mod quot;
-pub use quot::*;
+pub use quot::BNClient as Client;

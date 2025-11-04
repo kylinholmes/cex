@@ -1,4 +1,4 @@
-use binance::BNClient;
+use binance::Client;
 use cex_core::{CH_KLINE_V1, CHANNEL_CAP, CPTKline, create_channel, unlink_channel};
 use log::{error, info};
 use tracing_subscriber;
@@ -24,7 +24,7 @@ async fn main() {
     };
     info!("Shm Create/Attach Ok, {}", CH_KLINE_V1);
 
-    let mut client = match BNClient::connect(sender).await {
+    let mut client = match Client::connect(sender).await {
         Ok(client) => client,
         Err(err) => {
             error!("Connect Binance WebSocket 失败: {err:?}");

@@ -1,5 +1,5 @@
 [package]
-name = "dump"
+name = "dump_cli"
 version = "0.1.0"
 edition = "2024"
 authors = ["Kylin 874067181lsfy@gmail.com"]
@@ -13,3 +13,5 @@ tracing = "0.1.41"
 serde_json = "1.0"
 anyhow = "1.0"
 parquet = { version = "47.0.0", features = ["zstd"] }
+serde = { version = "1.0.228", features = ["derive"] }
+csv = "1.4.0"

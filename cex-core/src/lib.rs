@@ -1,5 +1,3 @@
-use thiserror::Error;
-
 pub mod shm_chan;
 mod v1;
 
@@ -22,19 +20,32 @@ pub const SIDE_CLOSE_LONG: i32 = 11;
 pub const SIDE_OPEN_SHORT: i32 = 20;
 pub const SIDE_CLOSE_SHORT: i32 = 21;
 
+/// 现货
+pub const COIN_TYPE_SPOT: i32 = 300;
+/// 杠杆(两融)
+pub const COIN_TYPE_MARGIN: i32 = 301;
+/// 永续合约
+pub const COIN_TYPE_SWAP: i32 = 400;
+/// 交割合约
+pub const COIN_TYPE_FUTURES: i32 = 401;
+/// 期权
+pub const COIN_TYPE_OPTION: i32 = 402;
 
-pub const ORDER_TYPE_LIMIT: i32 = 300;
-pub const ORDER_TYPE_MARKET: i32 = 301;
+/// 限价委托
+pub const ORDER_TYPE_LIMIT: i32 = 1000;
+/// 市价委托
+pub const ORDER_TYPE_MARKET: i32 = 1001;
+/// 只挂单
+pub const ORDER_TYPE_POST_ONLY: i32 = 1002;
+/// 全部成交或立即取消
+pub const ORDER_TYPE_FOK: i32 = 1003;
+/// 立即成交并取消剩余
+pub const ORDER_TYPE_IOC: i32 = 1004;
+/// 市价委托立即成交并取消剩余
+pub const ORDER_TYPE_OPTIMAL_LIMIT_IOC: i32 = 1005;
 
+
+/// Binance
 pub const EXCHID_BINANCE: i32 = 4000;
+/// OKX
 pub const EXCHID_OKX: i32 = 4001;
-
-#[derive(Debug, Error)]
-pub enum CexError {
-    #[error("API error: {0}")]
-    ApiError(String),
-    #[error("Network error: {0}")]
-    NetworkError(String),
-    #[error("Parse error: {0}")]
-    ParseError(String),
-}

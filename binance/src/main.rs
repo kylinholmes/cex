@@ -3,7 +3,7 @@
 /// - 一个异步任务发送数据，一个本地异步任务轮询并打印收到的数据
 use std::time::Duration;
 
-use binance::BNClient;
+use binance::Client;
 use cex_core::{CH_KLINE_V1, CHANNEL_CAP, CPTKline, ChannelError, create_channel, list_shm, unlink_channel};
 use tokio::time::sleep;
 use log::{error, info};
@@ -33,7 +33,7 @@ async fn main() {
     };
     info!("Shm Create/Attach Ok, {}", CH_KLINE_V1);
 
-    let mut client = match BNClient::connect(sender).await {
+    let mut client = match Client::connect(sender).await {
         Ok(client) => client,
         Err(err) => {
             error!("Connect Binance WebSocket 失败: {err:?}");
@@ -41,7 +41,7 @@ async fn main() {
         }
     };
 
-    let codes = vec!["btcusdt".to_string(), "ethusdt".to_string()];
+    let codes = vec!["btc".to_string(), "eth".to_string()];
 
     let recv_loop = async move {
         loop {

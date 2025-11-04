@@ -1,7 +1,7 @@
 use anyhow::bail;
-use log::{error, info};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use cex_core::{CPTKline, EXCHID_BINANCE, Sender, write_fixed};
+use cex_core::{COIN_TYPE_SPOT, CPTKline, EXCHID_BINANCE, Sender, write_fixed};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
@@ -81,6 +81,28 @@ struct BNKline {
     is_closed: bool,
 }
 
+fn parse_interval(interval: &str) -> i64 {
+    match interval {
+        "1s" => 1,
+        "1m" => 60,
+        "3m" => 180,
+        "5m" => 300,
+        "15m" => 900,
+        "30m" => 1800,
+        "1h" => 3600,
+        "2h" => 7200,
+        "4h" => 14400,
+        "6h" => 21600,
+        "8h" => 28800,
+        "12h" => 43200,
+        "1d" => 86400,
+        "3d" => 259200,
+        "1w" => 604800,
+        "1M" => 2592000,
+        _ => 0,
+    }
+}
+
 pub struct BNClient {
     pub ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     pub tx: Sender<CPTKline>,
@@ -102,7 +124,13 @@ impl BNClient {
     pub async fn subscribe_kline(&mut self, codes: Vec<String>) -> anyhow::Result<()> {
         let subs = json!({
             "method": "SUBSCRIBE",
-            "params": codes.iter().map(|code| format!("{}@kline_1s", code)).collect::<Vec<String>>(),
+            "params": codes.iter().map(|code| { 
+                if code.to_lowercase().contains("usdt") {
+                    format!("{}@kline_1s", code)
+                } else {
+                    format!("{}usdt@kline_1s", code)
+                } 
+            }).collect::<Vec<String>>(),
             "id": 1
         });
         self.ws_stream.send(Message::Text(subs.to_string())).await?;
@@ -121,14 +149,20 @@ impl BNClient {
                             continue;
                         }
                         let k = kline_data.kline;
-                        let now_ts_ns = chrono::Local::now().timestamp_nanos_opt().unwrap_or(0);
+                        let now_ts_ms = chrono::Local::now().timestamp_millis();
+                        let interval = parse_interval(&k.interval);
+                        if interval == 0 {
+                            warn!("Unknown interval: {}", k.interval);
+                            continue;
+                        }
 
                         let mut kline = CPTKline {
                             exchange: EXCHID_BINANCE,
                             code: [0; 16],
                             open_time_ms: k.start_time as u64,
-                            interval: 1,
-                            local_ts_ns: now_ts_ns as u64,
+                            interval,
+                            local_ts_ms: now_ts_ms as u64,
+                            data_type: COIN_TYPE_SPOT,
                             open: k.open.parse().unwrap_or(0.0),
                             close: k.close.parse().unwrap_or(0.0),
                             high: k.high.parse().unwrap_or(0.0),
